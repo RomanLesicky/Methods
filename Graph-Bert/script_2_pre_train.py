@@ -114,7 +114,6 @@ if 1:
     
     #! Change 2
     method_obj = MethodGraphBertNodeConstruct(bert_config) 
-    method_obj.device = device # Added line 
     method_obj = method_obj.to(device) # And also added line
 
 
