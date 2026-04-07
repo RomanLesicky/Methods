@@ -123,7 +123,6 @@ if 1:
     #! Change 2
     
     method_obj = MethodGraphBertNodeClassification(bert_config) 
-    method_obj.device = device # added line 
     method_obj = method_obj.to(device) # added line 
 
     #---- set to false to run faster ----
