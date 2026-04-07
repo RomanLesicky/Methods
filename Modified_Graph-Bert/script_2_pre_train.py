@@ -1,3 +1,11 @@
+""" 
+There are tree changes in this file that are both marked with a #!.
+
+Added change here to be directly able to control which GPU is meant to be used to train the model + 
+code to directly cap the maximal amount of CPU cores that are allowed to be used. 
+"""
+
+import os
 import numpy as np
 import torch
 
@@ -7,6 +15,21 @@ from code.MethodGraphBertNodeConstruct import MethodGraphBertNodeConstruct
 from code.MethodGraphBertGraphRecovery import MethodGraphBertGraphRecovery
 from code.ResultSaving import ResultSaving
 from code.Settings import Settings
+
+#! Change number 1
+np.random.seed(1)
+torch.manual_seed(1)
+
+if torch.cuda.is_available():
+    device = torch.device("cuda:0")
+    torch.cuda.manual_seed_all(1)
+    print(
+        f"Using GPU: {torch.cuda.get_device_name(0)} "
+        f"(CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES', 'all')})"
+    )
+else:
+    device = torch.device("cpu")
+    print("Using CPU")
 
 #--- ppi, c.elegan ----
 
@@ -88,7 +111,13 @@ if 1:
     data_obj.load_all_tag = True
 
     bert_config = GraphBertConfig(residual_type = residual_type, k=k, x_size=nfeature, y_size=y_size, hidden_size=hidden_size, intermediate_size=intermediate_size, num_attention_heads=num_attention_heads, num_hidden_layers=num_hidden_layers)
-    method_obj = MethodGraphBertNodeConstruct(bert_config)
+    
+    #! Change 2
+    method_obj = MethodGraphBertNodeConstruct(bert_config) 
+    method_obj.device = device # Added line 
+    method_obj = method_obj.to(device) # And also added line
+
+
     method_obj.max_epoch = max_epoch
     method_obj.lr = lr
 
@@ -165,7 +194,13 @@ if 0:
     data_obj.load_all_tag = True
 
     bert_config = GraphBertConfig(residual_type = residual_type, k=k, x_size=nfeature, y_size=y_size, hidden_size=hidden_size, intermediate_size=intermediate_size, num_attention_heads=num_attention_heads, num_hidden_layers=num_hidden_layers)
-    method_obj = MethodGraphBertGraphRecovery(bert_config)
+    
+    #! Change 3
+    method_obj = MethodGraphBertGraphRecovery(bert_config) 
+    method_obj.device = device # Added line 
+    method_obj = method_obj.to(device) # And also added line
+
+
     method_obj.max_epoch = max_epoch
     method_obj.lr = lr
 
