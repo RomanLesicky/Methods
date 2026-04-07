@@ -1,5 +1,11 @@
 # TO DO make a nice README
 
+## Changes to the orignal code: 
+
+GPU selection + CPU limitation was added, these were changes in files script_1 / 2 / 3 and 4 in both the `Graph-BERT` and `Modiefied_Graph-BERT` folders.  
+
+## Dataset:
+
 Specify that the dataset is not uploaded here since it's too big for Githubs 100 Mb hardcap that is why it's in the gitignore. 
 
 | Dataset | Link | `dataset_name` in code |
