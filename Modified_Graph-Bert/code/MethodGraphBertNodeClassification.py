@@ -132,9 +132,9 @@ class MethodGraphBertNodeClassification(BertPreTrainedModel):
                              
             acc_test = accuracy.evaluate()
 
-            self.learning_record_dict[epoch] = {'loss_train': loss_train.item(), 'acc_train': acc_train.item(),
-                                                'loss_val': loss_val.item(), 'acc_val': acc_val.item(),
-                                                'loss_test': loss_test.item(), 'acc_test': acc_test.item(),
+            self.learning_record_dict[epoch] = {'loss_train': loss_train.item(), 'acc_train': acc_train,
+                                                'loss_val': loss_val.item(), 'acc_val': acc_val,
+                                                'loss_test': loss_test.item(), 'acc_test': acc_test,
                                                 'test_acc_data': accuracy.data,
                                                 'test_op': test_op,
                                                 'time': time.time() - t_epoch_begin}
