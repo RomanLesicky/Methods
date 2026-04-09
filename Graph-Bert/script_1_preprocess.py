@@ -12,9 +12,9 @@ from code.Settings import Settings
 
 # The four datasets that have to be manually changed when running the code on the different datasets
 
-#dataset_name = 'ppi'
+dataset_name = 'ppi'
 
-dataset_name = 'c.elegan'
+#dataset_name = 'c.elegan'
 
 #dataset_name = 'drosophila'
 
