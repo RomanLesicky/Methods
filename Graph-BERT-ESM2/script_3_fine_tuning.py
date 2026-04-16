@@ -1,26 +1,29 @@
 """ 
-There are two changes in this file that are both marked with a #!.
+There are four changes in this file that are not present in the original `script_3_fine_tuning` in Graph-BERT folder. 
 
-Added change here to be directly able to control which GPU is meant to be used to train the model + 
-code to directly cap the maximal amount of CPU cores that are allowed to be used. 
+1. Reads dataset_name and embedder from PPI_DATASET / PPI_EMBEDDER env vars (set by run.sh), with fallback to in-file defaults.
+
+2. Auto-detects nfeature and ngraph from the staged node file.
+
+3. Tags result filenames with embedder so runs don't overwrite each other.
+
+4. GPU selection + CPU core cap via env vars (handled by run.sh).
 """
-
-
-
+import os
+import numpy as np
+import torch
+ 
 from code.DatasetLoader import DatasetLoader
 from code.MethodBertComp import GraphBertConfig
 from code.MethodGraphBertNodeClassification import MethodGraphBertNodeClassification
 from code.ResultSaving import ResultSaving
 from code.Settings import Settings
-import numpy as np
-import torch
-import os
-
-#! Change number 1
-
+ 
+# ---- Seeding ----
 np.random.seed(1)
 torch.manual_seed(1)
-
+ 
+# ---- Device selection ----
 if torch.cuda.is_available():
     device = torch.device("cuda:0")
     torch.cuda.manual_seed_all(1)
@@ -31,83 +34,53 @@ if torch.cuda.is_available():
 else:
     device = torch.device("cpu")
     print("Using CPU")
-
-
-#---- 'cora' , 'citeseer', 'pubmed' ----
-
-# The four datasets that have to be manually changed when running the code on the different datasets
-
-dataset_name = 'ppi'
-
-#dataset_name = 'c.elegan'
-
-#dataset_name = 'drosophila'
-
-#dataset_name = 'e.coli'
-
-
-# These two lines were moved up so they are commented out:
-
-# np.random.seed(1)
-# torch.manual_seed(1)
-
-#---- cora-small is for debuging only ----
-if dataset_name == 'ppi':
-    nclass = 2
-    nfeature = 2048
-    ngraph = 16324
-
-elif dataset_name == 'human':
-    nclass = 2
-    nfeature = 2048
-    ngraph = 56919  #27920 --> modified this 19/02/23
-
-elif dataset_name == 'c.elegan':
-    nclass = 2
-    nfeature = 2048
-    ngraph = 4548
-
-elif dataset_name == 'drosophila':
-    nclass = 2
-    nfeature = 2048
-    ngraph = 26602  
-
-elif dataset_name == 'e.coli':
-    nclass = 2
-    nfeature = 2048
-    ngraph = 9607
-
-
-#---- Fine-Tuning Task 1: Graph Bert Node Classification (Cora, Citeseer, and Pubmed) ----
+ 
+# ---- Dataset + embedder from env vars (set by run.sh) ----
+dataset_name = os.environ.get('PPI_DATASET', 'c.elegan')
+embedder     = os.environ.get('PPI_EMBEDDER', 'seqvec')
+ 
+print(f"Dataset : {dataset_name}")
+print(f"Embedder: {embedder}")
+ 
+# ---- Auto-detect nfeature and ngraph from the staged node file ----
+node_path = f'./data/{dataset_name}/node'
+if not os.path.exists(node_path):
+    raise FileNotFoundError(
+        f"Staged node file not found: {node_path}\n"
+        f"Run:  python stage_node.py --dataset {dataset_name} --embedder {embedder}\n"
+        f"  or: ./run.sh <cores> <gpu> script_3_fine_tuning.py {dataset_name} {embedder}"
+    )
+ 
+with open(node_path) as f:
+    first_line = f.readline().strip()
+    ncols = len(first_line.split('\t'))
+    nfeature = ncols - 2
+    ngraph = 1 + sum(1 for _ in f)
+ 
+nclass = 2
+ 
+print(f"Node file: {node_path}")
+print(f"  ngraph   = {ngraph}")
+print(f"  nfeature = {nfeature}")
+print(f"  nclass   = {nclass}")
+ 
+ 
+# ---- Fine-Tuning: Graph Bert Node Classification ----
 if 1:
-    #---- hyper-parameters ----
-    if dataset_name == 'ppi':
-        lr = 0.001
-        k = 7
-        max_epoch = 250 # 500 ---- do an early stop when necessary ----
-    
-    elif dataset_name == 'human':
-        lr = 0.001
-        k = 7
-        max_epoch = 120
-    
-    elif dataset_name == 'c.elegan':
-        lr = 0.001
-        k = 7
-        max_epoch = 120 # 150 ---- do an early stop when necessary ----
-    
-    elif dataset_name == 'e.coli':
-        lr = 0.001
-        k = 7
-        max_epoch = 120
-        
-    elif dataset_name == 'drosophila':
-        lr = 0.001
-        k = 7
-        max_epoch = 120 # 150 ---- do an early stop when necessary ----
-                 
-    
-
+    # ---- hyper-parameters ----
+    lr = 0.001
+    k = 7
+ 
+    # Per-dataset max_epoch (matching the original script's values)
+    EPOCH_MAP = {
+        'ppi': 250,
+        'human': 120,
+        'c.elegan': 120,
+        'e.coli': 120,
+        'drosophila': 120,
+    }
+    max_epoch = EPOCH_MAP.get(dataset_name, 120)
+ 
     x_size = nfeature
     hidden_size = intermediate_size = 32
     num_attention_heads = 2
@@ -115,46 +88,48 @@ if 1:
     y_size = nclass
     graph_size = ngraph
     residual_type = 'graph_raw'
-    # --------------------------
-
+ 
     print('************ Start ************')
-    print('GrapBert, dataset: ' + dataset_name + ', residual: ' + residual_type + ', k: ' + str(k) + ', hidden dimension: ' + str(hidden_size) +', hidden layer: ' + str(num_hidden_layers) + ', attention head: ' + str(num_attention_heads))
-    # ---- objection initialization setction ---------------
+    print(f'GraphBert | dataset: {dataset_name} | embedder: {embedder} | '
+          f'residual: {residual_type} | k: {k} | '
+          f'hidden: {hidden_size} | layers: {num_hidden_layers} | '
+          f'heads: {num_attention_heads} | x_size: {x_size}')
+ 
     data_obj = DatasetLoader()
-    data_obj.dataset_source_folder_path = './data/' + dataset_name + '/'
+    data_obj.dataset_source_folder_path = f'./data/{dataset_name}/'
     data_obj.dataset_name = dataset_name
     data_obj.k = k
     data_obj.load_all_tag = True
-
-    bert_config = GraphBertConfig(residual_type = residual_type, k=k, x_size=nfeature, y_size=y_size, hidden_size=hidden_size, intermediate_size=intermediate_size, num_attention_heads=num_attention_heads, num_hidden_layers=num_hidden_layers)
-    
-    #! Change 2
-    
-    method_obj = MethodGraphBertNodeClassification(bert_config) 
-    method_obj = method_obj.to(device) # added line 
-
-    #---- set to false to run faster ----
+ 
+    bert_config = GraphBertConfig(
+        residual_type=residual_type, k=k, x_size=nfeature, y_size=y_size,
+        hidden_size=hidden_size, intermediate_size=intermediate_size,
+        num_attention_heads=num_attention_heads, num_hidden_layers=num_hidden_layers,
+    )
+ 
+    method_obj = MethodGraphBertNodeClassification(bert_config)
+    method_obj = method_obj.to(device)
     method_obj.spy_tag = True
     method_obj.max_epoch = max_epoch
     method_obj.lr = lr
-
+ 
     result_obj = ResultSaving()
     result_obj.result_destination_folder_path = './result/GraphBert/'
-    result_obj.result_destination_file_name = dataset_name + '_' + str(num_hidden_layers)
-
+    result_obj.result_destination_file_name = (
+        f'{dataset_name}_{embedder}_{num_hidden_layers}'
+    )
+ 
     setting_obj = Settings()
-
     evaluate_obj = None
-    # ------------------------------------------------------
-
-    # ---- running section ---------------------------------
+ 
     setting_obj.prepare(data_obj, method_obj, result_obj, evaluate_obj)
     setting_obj.load_run_save_evaluate()
-    # ------------------------------------------------------
-
-
-    method_obj.save_pretrained('./result/PreTrained_GraphBert/' + dataset_name + '/node_classification_complete_model/')
+ 
+    # Save the fine-tuned model (tagged with embedder)
+    save_dir = (
+        f'./result/PreTrained_GraphBert/{dataset_name}_{embedder}/'
+        f'node_classification_complete_model/'
+    )
+    method_obj.save_pretrained(save_dir)
+ 
     print('************ Finish ************')
-#------------------------------------
-
-

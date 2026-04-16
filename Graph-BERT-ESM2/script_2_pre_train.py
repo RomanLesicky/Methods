@@ -1,25 +1,32 @@
 """ 
-There are tree changes in this file that are both marked with a #!.
+There are four changes in this file that are not present in the original `script_2_pre_train` in Graph-BERT folder. 
 
-Added change here to be directly able to control which GPU is meant to be used to train the model + 
-code to directly cap the maximal amount of CPU cores that are allowed to be used. 
+1. Reads dataset_name and embedder from PPI_DATASET / PPI_EMBEDDER env vars (set by run.sh), with fallback to in-file defaults.
+
+2. Auto-detects nfeature and ngraph from the staged node file.
+
+3. Tags result filenames with embedder so runs don't overwrite each other.
+
+4. GPU selection + CPU core cap via env vars (handled by run.sh).
+
 """
 
 import os
 import numpy as np
 import torch
-
+ 
 from code.DatasetLoader import DatasetLoader
 from code.MethodBertComp import GraphBertConfig
 from code.MethodGraphBertNodeConstruct import MethodGraphBertNodeConstruct
 from code.MethodGraphBertGraphRecovery import MethodGraphBertGraphRecovery
 from code.ResultSaving import ResultSaving
 from code.Settings import Settings
-
-#! Change number 1
+ 
+# ---- Seeding ----
 np.random.seed(1)
 torch.manual_seed(1)
-
+ 
+# ---- Device selection ----
 if torch.cuda.is_available():
     device = torch.device("cuda:0")
     torch.cuda.manual_seed_all(1)
@@ -30,76 +37,44 @@ if torch.cuda.is_available():
 else:
     device = torch.device("cpu")
     print("Using CPU")
-
-#--- ppi, c.elegan ----
-
-# The four datasets that have to be manually changed when running the code on the different datasets
-
-dataset_name = 'ppi'
-
-#dataset_name = 'c.elegan'
-
-#dataset_name = 'drosophila'
-
-#dataset_name = 'e.coli'
-
-np.random.seed(1)
-torch.manual_seed(1)
-
-#---- cora-small is for debuging only ----
-if dataset_name == 'ppi':
-    nclass = 2
-    nfeature = 2048
-    ngraph = 16324
-
-elif dataset_name == 'human':
-    nclass = 2
-    nfeature = 2048
-    ngraph = 56919  #27920
-        
-elif dataset_name == 'c.elegan':
-    nclass = 2
-    nfeature = 2048
-    ngraph = 4548
-    
-elif dataset_name == 'drosophila':
-    nclass = 2
-    nfeature = 2048
-    ngraph = 26602  
  
-elif dataset_name == 'e.coli':
-    nclass = 2
-    nfeature = 2048
-    ngraph = 9607
-
-
-#---- Pre-Training Task #1: Graph Bert Node Attribute Reconstruction (Cora, Citeseer, and Pubmed) ----
+# ---- Dataset + embedder from env vars (set by run.sh) ----
+dataset_name = os.environ.get('PPI_DATASET', 'c.elegan')
+embedder     = os.environ.get('PPI_EMBEDDER', 'seqvec')
+ 
+print(f"Dataset : {dataset_name}")
+print(f"Embedder: {embedder}")
+ 
+# ---- Auto-detect nfeature and ngraph from the staged node file ----
+node_path = f'./data/{dataset_name}/node'
+if not os.path.exists(node_path):
+    raise FileNotFoundError(
+        f"Staged node file not found: {node_path}\n"
+        f"Run:  python stage_node.py --dataset {dataset_name} --embedder {embedder}\n"
+        f"  or: ./run.sh <cores> <gpu> script_2_pre_train.py {dataset_name} {embedder}"
+    )
+ 
+with open(node_path) as f:
+    first_line = f.readline().strip()
+    ncols = len(first_line.split('\t'))
+    nfeature = ncols - 2          # first col = pair_id, last col = label, rest = features
+    ngraph = 1 + sum(1 for _ in f)  # 1 for the line already read + remaining
+ 
+nclass = 2  # binary PPI classification for all datasets
+ 
+print(f"Node file: {node_path}")
+print(f"  ngraph   = {ngraph}")
+print(f"  nfeature = {nfeature}")
+print(f"  nclass   = {nclass}")
+ 
+ 
+# ---- Pre-Training Task #1: Graph Bert Node Attribute Reconstruction ----
 if 1:
-    #---- hyper-parameters ----
-    if dataset_name == 'ppi':
-        lr = 0.001
-        k = 7
-        max_epoch = 200 # ---- do an early stop when necessary ----
-    elif dataset_name == 'c.elegan':
-        lr = 0.001
-        k = 7
-        max_epoch = 200 # ---- do an early stop when necessary ----
-    
-    elif dataset_name == 'e.coli':
-        k = 7
-        lr = 0.001
-        max_epoch = 200    
-    
-    elif dataset_name == 'human':
-        k = 7
-        lr = 0.001
-        max_epoch = 200    
-        
-    elif dataset_name == 'drosophila':
-        k = 7
-        lr = 0.001
-        max_epoch = 200
-
+    # ---- hyper-parameters ----
+    lr = 0.001
+    k = 7
+    max_epoch = 200
+ 
     x_size = nfeature
     hidden_size = intermediate_size = 32
     num_attention_heads = 2
@@ -107,81 +82,49 @@ if 1:
     y_size = nclass
     graph_size = ngraph
     residual_type = 'graph_raw'
-    # --------------------------
-
+ 
     print('************ Start ************')
-    print('GrapBert, dataset: ' + dataset_name + ', Pre-training, Node Attribute Reconstruction.')
-    # ---- objection initialization setction ---------------
+    print(f'GraphBert | dataset: {dataset_name} | embedder: {embedder} | '
+          f'Pre-training: Node Attribute Reconstruction')
+ 
     data_obj = DatasetLoader()
-    data_obj.dataset_source_folder_path = './data/' + dataset_name + '/'
+    data_obj.dataset_source_folder_path = f'./data/{dataset_name}/'
     data_obj.dataset_name = dataset_name
     data_obj.k = k
     data_obj.load_all_tag = True
-
-    bert_config = GraphBertConfig(residual_type = residual_type, k=k, x_size=nfeature, y_size=y_size, hidden_size=hidden_size, intermediate_size=intermediate_size, num_attention_heads=num_attention_heads, num_hidden_layers=num_hidden_layers)
-    
-    #! Change 2
-    method_obj = MethodGraphBertNodeConstruct(bert_config) 
-    method_obj = method_obj.to(device) # And also added line
-
-
+ 
+    bert_config = GraphBertConfig(
+        residual_type=residual_type, k=k, x_size=nfeature, y_size=y_size,
+        hidden_size=hidden_size, intermediate_size=intermediate_size,
+        num_attention_heads=num_attention_heads, num_hidden_layers=num_hidden_layers,
+    )
+ 
+    method_obj = MethodGraphBertNodeConstruct(bert_config)
+    method_obj = method_obj.to(device)
     method_obj.max_epoch = max_epoch
     method_obj.lr = lr
-
+ 
     result_obj = ResultSaving()
     result_obj.result_destination_folder_path = './result/GraphBert/'
-    result_obj.result_destination_file_name = dataset_name + '_' + str(k) + '_node_reconstruction'
-
+    result_obj.result_destination_file_name = (
+        f'{dataset_name}_{embedder}_{k}_node_reconstruction'
+    )
+ 
     setting_obj = Settings()
-
     evaluate_obj = None
-    # ------------------------------------------------------
-
-    # ---- running section ---------------------------------
+ 
     setting_obj.prepare(data_obj, method_obj, result_obj, evaluate_obj)
     setting_obj.load_run_save_evaluate()
-    # ------------------------------------------------------
-
+ 
     print('************ Finish ************')
-#------------------------------------
-
-
-
-
-
-
-
-#---- Pre-Training Task #2: Graph Bert Network Structure Recovery (Cora, Citeseer, and Pubmed) ----
+ 
+ 
+# ---- Pre-Training Task #2: Graph Bert Network Structure Recovery ----
 if 0:
-    #---- hyper-parameters ----
-    if dataset_name == 'ppi':
-        lr = 0.001
-        k = 7
-        max_epoch = 200 # ---- do an early stop when necessary ----
-    elif dataset_name == 'c.elegan':
-        lr = 0.001
-        k = 7
-        max_epoch = 200 # ---- do an early stop when necessary ----
-    
-    elif dataset_name == 'human':
-        k = 7
-        lr = 0.001
-        max_epoch = 200 
-    
-    elif dataset_name == 'e.coli':
-        k = 7
-        lr = 0.001
-        max_epoch = 200
-    
-    elif dataset_name == 'drosophila':
-        k = 7
-        lr = 0.001
-        max_epoch = 200 # it takes a long epochs to converge, probably more than 2000
-    else:
-        k=5
-        lr = 0.01
-        max_epoch = 200
-
+    lr = 0.001
+    k = 7
+    max_epoch = 200
+ 
     x_size = nfeature
     hidden_size = intermediate_size = 32
     num_attention_heads = 2
@@ -189,42 +132,40 @@ if 0:
     y_size = nclass
     graph_size = ngraph
     residual_type = 'graph_raw'
-    # --------------------------
-
+ 
     print('************ Start ************')
-    print('GrapBert, dataset: ' + dataset_name + ', Pre-training, Graph Structure Recovery.')
-    # ---- objection initialization setction ---------------
+    print(f'GraphBert | dataset: {dataset_name} | embedder: {embedder} | '
+          f'Pre-training: Graph Structure Recovery')
+ 
     data_obj = DatasetLoader()
-    data_obj.dataset_source_folder_path = './data/' + dataset_name + '/'
+    data_obj.dataset_source_folder_path = f'./data/{dataset_name}/'
     data_obj.dataset_name = dataset_name
     data_obj.k = k
     data_obj.load_all_tag = True
-
-    bert_config = GraphBertConfig(residual_type = residual_type, k=k, x_size=nfeature, y_size=y_size, hidden_size=hidden_size, intermediate_size=intermediate_size, num_attention_heads=num_attention_heads, num_hidden_layers=num_hidden_layers)
-    
-    #! Change 3
-    method_obj = MethodGraphBertGraphRecovery(bert_config) 
-    method_obj.device = device # Added line 
-    method_obj = method_obj.to(device) # And also added line
-
-
+ 
+    bert_config = GraphBertConfig(
+        residual_type=residual_type, k=k, x_size=nfeature, y_size=y_size,
+        hidden_size=hidden_size, intermediate_size=intermediate_size,
+        num_attention_heads=num_attention_heads, num_hidden_layers=num_hidden_layers,
+    )
+ 
+    method_obj = MethodGraphBertGraphRecovery(bert_config)
+    method_obj.device = device
+    method_obj = method_obj.to(device)
     method_obj.max_epoch = max_epoch
     method_obj.lr = lr
-
+ 
     result_obj = ResultSaving()
     result_obj.result_destination_folder_path = './result/GraphBert/'
-    result_obj.result_destination_file_name = dataset_name + '_' + str(k) + '_graph_recovery'
-
+    result_obj.result_destination_file_name = (
+        f'{dataset_name}_{embedder}_{k}_graph_recovery'
+    )
+ 
     setting_obj = Settings()
-
     evaluate_obj = None
-    # ------------------------------------------------------
-
-    # ---- running section ---------------------------------
+ 
     setting_obj.prepare(data_obj, method_obj, result_obj, evaluate_obj)
     setting_obj.load_run_save_evaluate()
-    # ------------------------------------------------------
-
+ 
     print('************ Finish ************')
-#------------------------------------
-
+ 
