@@ -11,8 +11,10 @@ This is because SeqVec comes from Bio-embeddings which is an old package that is
 ```bash
 
 # Or conda
-mamba create -n bio_emb_recreated --file environment/seq_vec_emb_detailed_env.txt
- 
+mamba create -n seq_vec_emb --file environment/seq_vec_emb_detailed_env.txt
+
+mamba activate seq_vec_emb
+
 python -m pip install -f https://download.pytorch.org/whl/cu113/torch_stable.html torch==1.10.0+cu113
 
 python -m pip install "bio-embeddings[seqvec] @ git+https://github.com/sacdallago/bio_embeddings.git@develop"
