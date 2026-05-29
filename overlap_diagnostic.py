@@ -1,24 +1,13 @@
-#!/usr/bin/env python3
 """
-overlap_diagnostic_v2.py
-========================
-Robust successor to overlap_diagnostic.py. Instead of comparing pair_id *strings*
-(which are ambiguous for large protein indices and sensitive to concat order),
-this version:
+Overlap diagnostic for released vs raw PPI edge sets.
 
-  1. Decodes each released pair_id string into its underlying (idx1, idx2) tuple
-     by brute-force searching the proteinList range, trying both concat orders.
-  2. Compares as unordered frozenset({i, j}) edge tuples — invariant to both
-     concat direction and edge orientation.
+Decodes each released pair_id string back into its (idx1, idx2) tuple by brute-forcing the proteinList range (trying both concat orders), 
+then compares edges as unordered frozensets so the result is invariant to concat direction and edge orientation.
 
-Also reports *why* a pair_id failed to decode (ambiguous / no valid split),
-which diagnoses whether the discrepancy is a format bug or a real data mismatch.
+Also reports why a pair_id failed to decode, which tells you whether a discrepancy is a format bug or a real data mismatch.
 """
 
 import os
-from collections import Counter
-
-import numpy as np
 
 
 RAW_ROOT       = "/home/membio8/Methods_local/S-VGAE/data"
@@ -66,9 +55,8 @@ def load_released_pair_ids(node_path):
 
 
 def decode_pair_id(pair_id_str, n_proteins):
-    """Try all possible splits of the digit string into (a, b) where both
-    a, b are valid protein indices (< n_proteins). Return list of possible
-    frozenset({a, b}) decodings (could be 0, 1, or more)."""
+    """Return the set of frozenset({a, b}) splits of the digit string where both
+    a and b are valid protein indices (may be 0, 1, or several)."""
     candidates = set()
     s = pair_id_str
     for split in range(1, len(s)):
@@ -83,9 +71,7 @@ def decode_pair_id(pair_id_str, n_proteins):
 
 
 def diagnose(raw_name, proc_name, seqvec_name):
-    print(f"\n{'='*72}")
-    print(f"  Dataset: {raw_name}  (processed dir: '{proc_name}')")
-    print(f"{'='*72}")
+    print(f"\nDataset: {raw_name}  (processed dir: '{proc_name}')")
 
     raw_dir  = os.path.join(RAW_ROOT, raw_name)
     proc_dir = os.path.join(PROCESSED_ROOT, proc_name)
@@ -111,8 +97,7 @@ def diagnose(raw_name, proc_name, seqvec_name):
     released_ids = load_released_pair_ids(node_path)
     print(f"  released node file: {len(released_ids)} lines")
 
-    # --- decode released pair_ids into edge tuples ---
-    decoded_edges = set()        # frozenset({i,j}) for each unambiguously-decoded id
+    decoded_edges = set()
     ambiguous = 0
     unresolvable = 0
     for pid in released_ids:
@@ -122,16 +107,14 @@ def diagnose(raw_name, proc_name, seqvec_name):
         elif len(cands) == 1:
             decoded_edges.add(next(iter(cands)))
         else:
-            # ambiguous — still add all candidates to the "possible" set but count it
+            # ambiguous: keep every candidate but count it
             ambiguous += 1
-            # for the comparison, be charitable: include every candidate
             decoded_edges.update(cands)
 
     print(f"  decoded: {len(decoded_edges)} unique edges from released ids")
     print(f"    ambiguous ids (multiple valid splits): {ambiguous}")
     print(f"    unresolvable ids (no valid split):     {unresolvable}")
 
-    # --- overlap of edge sets ---
     inter = decoded_edges & raw_edge_set
     only_rel = decoded_edges - raw_edge_set
     only_raw = raw_edge_set - decoded_edges
@@ -141,14 +124,7 @@ def diagnose(raw_name, proc_name, seqvec_name):
     print(f"    only in released (can't find in raw): {len(only_rel)}")
     print(f"    only in raw (not in released):        {len(only_raw)}")
 
-    # --- sanity: do labels match? ---
-    # Build a label map from raw, then check released labels (last column) match.
-    raw_pos = set(frozenset({i, j}) for (i, j, p) in edges if p)
-    raw_neg = set(frozenset({i, j}) for (i, j, p) in edges if not p)
-    # (We'd need to re-read the released file with labels to cross-check — skipping for brevity.)
-
-    # --- first few examples of released pair_ids and how they decode ---
-    print(f"  first 5 released ids → decodings:")
+    print(f"  first 5 released ids -> decodings:")
     for pid in released_ids[:5]:
         cands = decode_pair_id(pid, n)
         matches = [c for c in cands if c in raw_edge_set]
@@ -156,7 +132,7 @@ def diagnose(raw_name, proc_name, seqvec_name):
 
 
 def main():
-    print("Robust overlap diagnostic (edge-set based)")
+    print("Overlap diagnostic (edge-set based)")
     for raw, proc, sv in DATASETS:
         try:
             diagnose(raw, proc, sv)
