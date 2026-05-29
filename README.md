@@ -1,4 +1,4 @@
-# Methods in Bioinformatics ULB INFO-F439
+# Methods in Bioinformatics (INFO-F439)
 
 The article that I have chosen from this course stems from K. Jha, S. Karmakar, and S. Saha. “Graph-BERT and language model-based framework for protein–protein interaction identification”. en. In: Scientific Reports 13.1 (Apr. 2023), p. 5663. doi: 10.1038/s41598-023-31612-w. 
 
