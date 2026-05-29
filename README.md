@@ -1,8 +1,6 @@
-# TO DO make a nice README
+# Methods in Bioinformatics ULB INFO-F439
 
-# Mention the need for 3 different env !!! and explain which is what !!! 
-
-# Explain the whole ordeal of ESM2 and only running it on C.Elegan / Drosophila / E.Coli 
+The article that I have chosen from this course stems from K. Jha, S. Karmakar, and S. Saha. “Graph-BERT and language model-based framework for protein–protein interaction identification”. en. In: Scientific Reports 13.1 (Apr. 2023), p. 5663. doi: 10.1038/s41598-023-31612-w. 
 
 ## Environment installation SeqVec:
 
@@ -37,7 +35,7 @@ pip install transformers accelerate
 
 ## Changes to the orignal code of Graph-BERT: 
 
-GPU selection + CPU limitation was added, these were changes in files script_1 / 2 / 3 and 4 in both the `Graph-BERT` and `Modiefied_Graph-BERT` folders. These changes are clearly specified in each of the files via a docstring that explains each individual change. Overall, the behavior of the code was not altered just adapted to suit a shared laboratory cluster.  
+Some changes were made in files script_1 / 2 / 3 and 4 in both the `Graph-BERT` folder. These changes are clearly specified in each of the files via a docstring that explains each individual change. Overall, the behavior of the code was not altered just adapted to suit a shared laboratory cluster, ultimately these concern aspects such as GPU selection with CPU limitation with a more appropriate chosing of which dataset it meant to be used without using hardcoded variables. 
 
 ## Dataset and SeqVec / ESM-2 weights:
 
